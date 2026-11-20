@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Numerics;
 using TMPro;
 using UnityEngine;
-
+using static UnityEditor.Searcher.SearcherWindow.Alignment;
 using Image = UnityEngine.UI.Image;
-using Vector2 = UnityEngine.Vector2;
 using Input = UnityEngine.Input;
+using Vector2 = UnityEngine.Vector2;
 
 public enum State  //玩家状态
 {
@@ -29,31 +29,36 @@ public class PlayerController : MonoBehaviour
     public TMP_Text hungerValue;    //（UI）饱食度文字
     public TMP_Text thirstValue;    //（UI）水分文字
 
-    private Vector2 vector2;
+    private Vector2 MoveDirection;    //移动向量
     private Rigidbody2D rb;
     private Animator ani;
 
     //Phisical Attributes生理属性
     //public float maxHP = 100f;
     //public float HP = 100f;
-    public float speed = 6f;
+    public float speed = 6f;    //奔跑速度
     public int energy = 100;    //精力值，单位%
     public int maxEnergy = 100;    //最大精力值
     public float stamina = 100f;  //耐力，单位%
     public float maxStamina = 100f;    //最大耐力（耐力上限）
     public int thirst = 2000;    //水分，单位mL
-    public int maxThirst = 2000;
+    public int maxThirst = 2000;    //最大水分（口渴上限）
     public int hunger = 8400;    //饱食度，单位kJ
-    public int maxHunger = 8400;
+    public int maxHunger = 8400;    //最大饱食度（饱食度上限）
 
     //Game Attributes游戏属性
-    public State state = State.idle;
-    public bool movable = true;    //能否移动
-    public bool cursorVisible = false;
+    public State state;     //玩家当前状态
+    public bool movable;    //能否移动
+    public bool cursorVisible;      //光标是否可见
 
     void Awake()
     {
         instance = this;
+
+        //初始化属性
+        state = State.idle;
+        movable = true;
+        cursorVisible = false;
     }
 
     void Start()
@@ -68,7 +73,6 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         SwitchState();
-        //Flip();已经用动画控制器的参数来控制翻转了，这个方法没用了
         SetCursorVisible();
         UpdateBars();
     }
@@ -138,43 +142,32 @@ public class PlayerController : MonoBehaviour
     /// <summary>
     /// 移动（刚体或Transform）
     /// </summary>
-    void Move()
+    void Move(float currentSpeed)
     {
-        float horizontal = Input.GetAxis("Horizontal");    //横轴
-        float vertical = Input.GetAxis("Vertical");      //纵轴
-
-        PlayAnim(horizontal, vertical);
-
-        vector2 = new Vector2(horizontal, vertical);
-
-        bool isRunning = Input.GetKey(KeyCode.LeftControl) && stamina > 0;    //左Ctrl键
-        float currentSpeed = isRunning ? speed : speed * 0.5f;    //当前是否处于奔跑
-
-
-        if (vector2 != Vector2.zero && movable)   //如果向量不为零且可移动
+        if (MoveDirection != Vector2.zero && movable)   //如果向量不为零且可移动
         {
             
             if (rb != null)
             {
-                rb.velocity = new Vector2(horizontal * currentSpeed, vertical * currentSpeed);  //先用2D刚体尝试移动
+                rb.velocity = MoveDirection * currentSpeed;  //先用2D刚体尝试移动
             }
             else
             {
                 //如果没有2D刚体 
-                transform.Translate(currentSpeed * Time.deltaTime * vector2);  //就用transform
+                transform.Translate(currentSpeed * Time.deltaTime * MoveDirection);  //就用transform
             }
 
             if (currentSpeed == speed)    //如果在奔跑
             {
-                stamina -= 24 * Time.deltaTime;    //耐力条削减
+                stamina -= 15 * Time.deltaTime;    //耐力条削减
             }
             else if (currentSpeed != speed && stamina < maxStamina)
             {
-                stamina += 14 * Time.deltaTime;
+                stamina += 5 * Time.deltaTime;
             }
 
         }
-        else
+        else    //如果向量为零或不可移动(静止状态)
         {
             if (rb != null)
             {
@@ -183,16 +176,51 @@ public class PlayerController : MonoBehaviour
 
             if (stamina < maxStamina)
             {
-                stamina += 18 * Time.deltaTime;    //静止时回复耐力更快
+                stamina += 8 * Time.deltaTime;    //静止时回复耐力更快
             }
             
         }
 
-        if (currentSpeed == speed)
+        //播放动画
+        PlayAnim(MoveDirection.x, MoveDirection.y, MoveDirection);
+    }
+
+    /// <summary>
+    /// 根据角色当前状态执行行为逻辑
+    /// </summary>
+    void SwitchState()
+    {
+        //获取输入轴(判断依据)
+        float horizontal = Input.GetAxis("Horizontal");    //横轴
+        float vertical = Input.GetAxis("Vertical");      //纵轴 
+        MoveDirection = new Vector2(horizontal, vertical);    //移动向量
+
+        //判断是否奔跑
+        bool isRunning = Input.GetKey(KeyCode.LeftControl) && stamina > 0;    //左Ctrl键
+        float currentSpeed = isRunning ? speed : speed * 0.5f;    //根据是否奔跑设置当前速度
+
+        //判断是否睡觉(按下Z键)
+        bool isSleeping = Input.GetKey(KeyCode.Z);
+
+        //判断是否上厕所(同时按下W和C键)
+        bool isWc = Input.GetKey(KeyCode.W) && Input.GetKey(KeyCode.C);
+
+        //切换状态
+        if(isSleeping)
+        {
+            state = State.sleep;
+            MoveDirection = Vector2.zero;    //睡觉时不移动
+        }
+        else if (isWc)
+        {
+            state = State.wc;
+            MoveDirection = Vector2.zero;    //上厕所时不移动
+        }
+        else if (isRunning)
         {
             state = State.run;
         }
-        else if (currentSpeed == speed * 0.5)
+        else if (!isRunning && MoveDirection != Vector2.zero)
         {
             state = State.walk;
         }
@@ -201,28 +229,21 @@ public class PlayerController : MonoBehaviour
             state = State.idle;
         }
 
-    }
-
-    /// <summary>
-    /// 判断角色状态
-    /// </summary>
-    void SwitchState()
-    {
         switch (state)
         {
             case State.run:
-                Move();
+                Move(currentSpeed);
                 break;
             case State.walk:
-                Move();
+                Move(currentSpeed);
                 break;
             case State.idle:
-                Move();
+                Move(currentSpeed);
                 break;
             case State.sleep:
                 break;
             case State.eat:
-                Move();
+                Move(currentSpeed);
                 break;
             case State.wc:
                 break;
@@ -248,38 +269,18 @@ public class PlayerController : MonoBehaviour
             Cursor.lockState = CursorLockMode.None;
         }
     }
-
-    /// <summary>
-    /// 翻转，（没用的东西，我要把他删了）
-    /// </summary>
-    /*
-    private void Flip()
-    {
-        float horiziontal = Input.GetAxis("Horizontal"); //横轴
-        float vertical = Input.GetAxis("Vertical"); //纵轴
-        if (horiziontal > 0) 
-        {
-            transform.localScale = new UnityEngine.Vector3(-15, 15, 10);
-        }
-        else if (horiziontal < 0)
-        {
-            transform.localScale = new UnityEngine.Vector3(15, 15, 10);
-        }
-
-    }
-    */
     
-
     /// <summary>
     /// 根据输入虚拟轴设置动画播放
     /// </summary>
     /// <param name="horizontal"></param>
     /// <param name="vertical"></param>
-    private void PlayAnim(float horizontal, float vertical)
+    /// <param name="moveDirection"></param>
+    private void PlayAnim(float horizontal, float vertical, Vector2 moveDirection)
     {
         ani.SetFloat("horizontal", horizontal);
         ani.SetFloat("vertical",vertical);
-        ani.SetBool("isMoving", horizontal != 0 || vertical != 0);
+        ani.SetBool("isMoving", moveDirection != Vector2.zero);
     }
 
     /// <summary>
