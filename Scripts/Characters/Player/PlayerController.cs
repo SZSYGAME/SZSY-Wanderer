@@ -30,6 +30,7 @@ public class PlayerController : MonoBehaviour
     public TMP_Text thirstValue;    //（UI）水分文字
 
     private Vector2 MoveDirection;    //移动向量
+    private Vector2 lookDirection = Vector2.right;
     private Rigidbody2D rb;
     private Animator ani;
 
@@ -182,7 +183,7 @@ public class PlayerController : MonoBehaviour
         }
 
         //播放动画
-        PlayAnim(MoveDirection.x, MoveDirection.y, MoveDirection);
+        PlayAnim(MoveDirection);
     }
 
     /// <summary>
@@ -271,16 +272,21 @@ public class PlayerController : MonoBehaviour
     }
     
     /// <summary>
-    /// 根据输入虚拟轴设置动画播放
+    /// 根据移动输入更新动画方向；停止时保留最后的朝向
     /// </summary>
-    /// <param name="horizontal"></param>
-    /// <param name="vertical"></param>
     /// <param name="moveDirection"></param>
-    private void PlayAnim(float horizontal, float vertical, Vector2 moveDirection)
+    private void PlayAnim(Vector2 moveDirection)
     {
-        ani.SetFloat("horizontal", horizontal);
-        ani.SetFloat("vertical",vertical);
-        ani.SetBool("isMoving", moveDirection != Vector2.zero);
+        bool isMoving = moveDirection != Vector2.zero && movable;
+        if (!Mathf.Approximately(moveDirection.x, 0f) || !Mathf.Approximately(moveDirection.y, 0f))
+        {
+            lookDirection.Set(moveDirection.x, moveDirection.y);
+            lookDirection.Normalize();
+        }
+
+        ani.SetFloat("horizontal", lookDirection.x);
+        ani.SetFloat("vertical", lookDirection.y);
+        ani.SetBool("isMoving", isMoving);
     }
 
     /// <summary>
